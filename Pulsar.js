@@ -1,6 +1,7 @@
 const SerialPort = require('serialport');
 const { checkSum: calcCRC16 } = require('node-crc16');
 const Gpio = require('onoff').Gpio;
+const { flipHexString, hexToFloat } = require('./helpers/hexToFloat');
 
 module.exports = class Pulsar {
   deviceAddress = null;
@@ -127,7 +128,7 @@ module.exports = class Pulsar {
     ;
     request += calcCRC16(request);
     request = request.toUpperCase();
-
+    console.log('send request: ', request);
     return new Promise(( resolve, reject ) => {
       this.setGPIOHigh();
       this.serialPort.flush(( flushError ) => {
@@ -161,6 +162,23 @@ module.exports = class Pulsar {
       const minute = parseInt(data.slice(8, 10), 16);
       const second = parseInt(data.slice(10, 12), 16);
       return { year, month, day, hour, minute, second };
+    });
+  }
+
+  getValues( channels ) {
+    let mask = 0;
+    channels.forEach(channel => {
+      mask = mask | parseInt('1'.padEnd(channel, '0'), 2);
+    });
+
+    const data = flipHexString(mask.toString(16).padStart(8, '0'));
+    return this.sendRequest('01', data).then(( data ) => {
+      const sortedChannel = channels.sort(( a, b ) => a === b ? 0 : a < b ? -1 : 1);
+      const values = data.match(/.{1,8}/g);
+      return values.reduce(( dict, v, i ) => {
+        dict[sortedChannel[i]] = hexToFloat(v);
+        return dict;
+      }, {});
     });
   }
 };
